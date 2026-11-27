@@ -57,5 +57,5 @@ See the full [User Guide](docs/USER_GUIDE.md).
 
 - [User Guide](docs/USER_GUIDE.md): execution, inputs, and how to read the output
 - [Testing Evidence](docs/TESTING.md): test cases with expected and actual results
-- Contribution Record: (paste Google Spreadsheet link here)
+- Contribution Record: (Google Spreadsheet link here)
 - Presentation: see the `presentation/` folder
