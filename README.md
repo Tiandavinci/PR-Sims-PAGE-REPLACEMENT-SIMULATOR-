@@ -6,12 +6,12 @@ A GUI-based (Tkinter) application that simulates the **FIFO**, **LRU**, and **Op
 
 | Name | Role |
 |------|------|
-| Guerra, Kenneth Lawrence | Back-end |
-| Oquin, Edmel Cristian | Front-end |
-| Matira, Adhyson | Back-end |
-| Antiniola, Matthew | Front-end |
-| Corona, Christian Joseph | Front-end |
-| Martinez, Juan Carlo Gabriel | Front-end |
+| Guerra, Kenneth Lawrence | Back-end Developer |
+| Oquin, Edmel Cristian | Front-end Developer |
+| Matira, Adhyson | Back-end Support|
+| Antiniola, Matthew | Front-end Support |
+| Corona, Christian Joseph | Front-end Support |
+| Martinez, Juan Carlo Gabriel | Front-end Support |
 
 **Course / Section:** BSIT - 2104  **Instructor:** Gerarld James Dano
 
