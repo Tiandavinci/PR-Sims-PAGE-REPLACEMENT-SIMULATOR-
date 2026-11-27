@@ -12,7 +12,7 @@ Group Members
 
 BSIT - 2104 (Gerarld James Dano)
 
- Features
+Features
 ·Three algorithms: FIFO, LRU, Optimal
 ·Compare All mode: runs all three on the same input and shows a summary table
 ·Step-by-step results table (page, frame contents, HIT/FAULT, replaced page)
