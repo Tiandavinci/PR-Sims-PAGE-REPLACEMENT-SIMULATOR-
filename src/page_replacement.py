@@ -1,0 +1,484 @@
+"""
+PAGE REPLACEMENT SIMULATOR (GUI)
+Algorithms: FIFO, LRU, Optimal
+Screens: Title -> Input -> Results
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+
+BG = "#0b0b2b"
+YELLOW = "#ffd400"
+ORANGE = "#ff7a00"
+WHITE = "#ffffff"
+GREEN = "#2ecc71"
+RED = "#ff4d4d"
+FONT = "Courier"
+
+ALGO_NAMES = {
+    "FIFO": "FIRST IN FIRST OUT (FIFO)",
+    "LRU": "LEAST RECENTLY USED (LRU)",
+    "OPTIMAL": "OPTIMAL",
+}
+
+ALGO_INFO = {
+    "FIFO": ("FIRST IN FIRST OUT (FIFO)\n"
+             "Replaces the page that has been in memory the longest,\n"
+             "no matter how often it has been used."),
+    "LRU": ("LEAST RECENTLY USED (LRU)\n"
+            "Replaces the page that has not been used for the longest time,\n"
+            "based on when it was last accessed."),
+    "OPTIMAL": ("OPTIMAL\n"
+                "Replaces the page that will not be used for the longest time in the future.\n"
+                "It gives the fewest page faults, but needs to know the whole reference string."),
+    "COMPARE ALL": ("COMPARE ALL\n"
+                    "Runs FIFO, LRU and Optimal on the same input,\n"
+                    "then shows a summary so you can see which performs best."),
+}
+
+
+
+def simulate(algorithm, refs, num_frames):
+
+    frames = [None] * num_frames
+    trace = []
+    hits = faults = 0
+
+    fifo_pointer = 0
+    last_used = {}
+
+    for i, page in enumerate(refs):
+        replaced = None
+
+        if page in frames:
+            status = "HIT"
+            hits += 1
+        else:
+            status = "FAULT"
+            faults += 1
+
+            if None in frames:
+                slot = frames.index(None)
+                if algorithm == "FIFO":
+                    fifo_pointer = (slot + 1) % num_frames
+            else:
+                if algorithm == "FIFO":
+                    slot = fifo_pointer
+                    fifo_pointer = (fifo_pointer + 1) % num_frames
+
+                elif algorithm == "LRU":
+                    # evict the page whose last use is oldest
+                    slot = min(range(num_frames), key=lambda f: last_used[frames[f]])
+
+                else:
+
+                    farthest = -1
+                    slot = 0
+                    for f in range(num_frames):
+                        try:
+                            nxt = refs.index(frames[f], i + 1)
+                        except ValueError:
+                            nxt = float("inf")     # never used again
+                        if nxt > farthest:
+                            farthest = nxt
+                            slot = f
+                replaced = frames[slot]
+
+            frames[slot] = page
+
+        last_used[page] = i                       
+        trace.append((page, frames.copy(), status, replaced))
+
+    return trace, hits, faults
+
+
+def show(value):
+    return "-" if value is None else str(value)
+
+
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Page Replacement Simulator")
+        self.geometry("960x700")
+        self.minsize(900, 680)
+        self.configure(bg=BG)
+
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("Treeview", rowheight=26, font=(FONT, 11))
+        style.configure("Treeview.Heading", font=(FONT, 11, "bold"))
+        style.configure("TNotebook.Tab", font=(FONT, 11, "bold"), padding=(12, 4))
+
+        self.container = tk.Frame(self, bg=BG)
+        self.container.pack(fill="both", expand=True)
+
+        self.screens = {
+            "title": TitleScreen(self.container, self),
+            "input": InputScreen(self.container, self),
+            "results": ResultsScreen(self.container, self),
+        }
+        self.show_screen("title")
+
+    def show_screen(self, name):
+        for s in self.screens.values():
+            s.pack_forget()
+        self.screens[name].pack(fill="both", expand=True)
+
+
+def retro_button(parent, text, command, color=YELLOW, width=14):
+    return tk.Button(
+        parent, text=text, command=command, width=width,
+        font=(FONT, 16, "bold"), bg=color, fg=BG,
+        activebackground=WHITE, activeforeground=BG,
+        relief="raised", bd=5, cursor="hand2",
+    )
+
+
+
+def _lerp_color(stops, t):
+    """Blend between color stops [(pos, (r,g,b)), ...] for t in 0..1."""
+    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
+        if t <= p1:
+            k = (t - p0) / (p1 - p0) if p1 > p0 else 0
+            return "#%02x%02x%02x" % tuple(int(a + (b - a) * k) for a, b in zip(c0, c1))
+    return "#%02x%02x%02x" % stops[-1][1]
+
+
+class TitleScreen(tk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=BG)
+        self.app = app
+
+        self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+
+        self.start_btn = retro_button(self.canvas, "START",
+                                      lambda: app.show_screen("input"), width=12)
+
+        self._blink_on = True
+        self.canvas.bind("<Configure>", lambda e: self.draw())
+        self._blink()
+
+    def outlined(self, x, y, text, font, fill, outline="black", o=2, tags=()):
+        """Text with a thick outline, like the arcade logo."""
+        c = self.canvas
+        for dx in range(-o, o + 1):
+            for dy in range(-o, o + 1):
+                if dx or dy:
+                    c.create_text(x + dx, y + dy, text=text, font=font,
+                                  fill=outline, justify="center", tags=tags)
+        c.create_text(x, y, text=text, font=font, fill=fill,
+                      justify="center", tags=tags)
+
+    def draw(self):
+        c = self.canvas
+        c.delete("all")
+        w, h = c.winfo_width(), c.winfo_height()
+        if w < 50 or h < 50:
+            return
+
+      
+        stops = [(0.0, (38, 30, 22)), (0.5, (120, 104, 72)), (1.0, (44, 38, 26))]
+        bands = 70
+        for i in range(bands):
+            y0, y1 = h * i / bands, h * (i + 1) / bands + 1
+            c.create_rectangle(0, y0, w, y1, outline="",
+                               fill=_lerp_color(stops, i / (bands - 1)))
+
+        cx = w // 2
+        fs = int(min(h * 0.17, w * 0.1))
+        big = ("Impact", fs, "italic")
+
+        
+        self.outlined(cx, h * 0.10, "MEMORY MANAGEMENT",
+                      (FONT, max(11, int(h * 0.032)), "bold"), "#fff3b0", "#1a1208", 2)
+
+       
+        for text, y in (("PAGE", h * 0.27), ("REPLACEMENT", h * 0.47)):
+            c.create_text(cx + 7, y + 7, text=text, font=big, fill="#3a0f00")
+            self.outlined(cx, y, text, big, "#ffb000", "#1a0800", 4)
+            c.create_text(cx, y + 2, text=text, font=big, fill="#e8520a")
+            c.create_text(cx - 2, y - 3, text=text, font=big, fill="#ff8a1f")
+
+     
+        meaning = ("Page replacement is how the operating system decides which\n"
+                   "page to remove from memory when all frames are full\n"
+                   "and a new page needs to be loaded.")
+        self.outlined(cx, h * 0.665, meaning,
+                      (FONT, max(10, int(h * 0.024)), "bold"), WHITE, "#1a1208", 1)
+
+    
+        c.create_window(cx, h * 0.795, window=self.start_btn)
+        self.outlined(cx, h * 0.89, "PUSH START!",
+                      (FONT, max(14, int(h * 0.04)), "bold"), "#cfe0ff", "#10205a", 2,
+                      tags=("blink",))
+        c.tag_bind("blink", "<Button-1>", lambda e: self.app.show_screen("input"))
+        c.tag_bind("blink", "<Enter>", lambda e: c.config(cursor="hand2"))
+        c.tag_bind("blink", "<Leave>", lambda e: c.config(cursor=""))
+
+       
+        self.outlined(cx, h - 16, "ALGORITHMS:  FIFO  -  LRU  -  OPTIMAL",
+                      (FONT, max(10, int(h * 0.022)), "bold"), WHITE, "#1a1208", 1)
+
+    def _blink(self):
+        self._blink_on = not self._blink_on
+        self.canvas.itemconfigure("blink", state="normal" if self._blink_on else "hidden")
+        self.after(600, self._blink)
+
+
+
+METAL = "#2e2015"      
+PLATE = "#4a3526"      
+EDGE = "#6b5238"      
+CREAM = "#efe6d0"     
+TAN = "#c9b48a"      
+DARK = "#150e08"       
+
+
+ALGO_CARDS = [
+    ("FIFO", "FIFO", "First In\nFirst Out"),
+    ("LRU", "LRU", "Least Recently\nUsed"),
+    ("OPTIMAL", "OPT", "Looks Ahead"),
+    ("COMPARE ALL", "ALL", "Run All Three"),
+]
+
+
+class InputScreen(tk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=METAL)
+        self.app = app
+        self.algo_var = tk.StringVar(value="FIFO")
+
+      
+        self.header = tk.Canvas(self, height=84, bg=METAL, highlightthickness=0)
+        self.header.pack(fill="x", padx=30, pady=(18, 10))
+        self.header.bind("<Configure>", self.draw_header)
+
+     
+        row = tk.Frame(self, bg=METAL)
+        row.pack(pady=4)
+        self.cards = {}
+        for key, abbr, sub in ALGO_CARDS:
+            card = self.make_card(row, key, abbr, sub)
+            card["frame"].pack(side="left", padx=9)
+            self.cards[key] = card
+
+      
+        guide = tk.Frame(self, bg=DARK, highlightthickness=3, highlightbackground=EDGE)
+        guide.pack(padx=40, pady=(10, 8), fill="x")
+        self.info_label = tk.Label(guide, font=(FONT, 12, "bold"), fg=CREAM, bg=DARK,
+                                   justify="center", wraplength=820, height=4)
+        self.info_label.pack(padx=10, pady=6)
+
+  
+        inputs = tk.Frame(self, bg=METAL)
+        inputs.pack(pady=6)
+        self.frames_entry = self.make_field(inputs, "PAGE FRAMES", 8)
+        self.refs_entry = self.make_field(inputs, "PAGE REFERENCE STRING", 34)
+
+        tk.Label(self, text="Example:  7 0 1 2 0 3 0 4 2 3",
+                 font=(FONT, 11, "bold"), fg=TAN, bg=METAL).pack(pady=(2, 8))
+
+       
+        btns = tk.Frame(self, bg=METAL)
+        btns.pack(pady=(0, 12))
+        retro_button(btns, "BACK", lambda: app.show_screen("title"),
+                     color=TAN, width=10).grid(row=0, column=0, padx=10)
+        retro_button(btns, "RUN", self.run, color=ORANGE, width=10).grid(row=0, column=1, padx=10)
+
+        self.select("FIFO")
+
+    
+    def draw_header(self, event=None):
+        c = self.header
+        c.delete("all")
+        w, h = c.winfo_width(), c.winfo_height()
+        if w < 100:
+            return
+
+        def plate(x0, y0, x1, y1, r, fill, outline=""):
+            pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
+                   x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+            c.create_polygon(pts, smooth=True, fill=fill, outline=outline, width=3)
+
+        plate(6, 10, w - 2, h - 2, 14, "#1a1208")              
+        plate(2, 4, w - 6, h - 8, 14, PLATE, EDGE)            
+        for rx in (18, w - 22):                                
+            for ry in (18, h - 22):
+                c.create_oval(rx - 6, ry - 6, rx + 6, ry + 6, fill=TAN, outline="#1a1208", width=2)
+
+        font = ("Impact", 34)
+        cx, cy = w // 2, h // 2 - 2
+        for dx in range(-3, 4):                                
+            for dy in range(-3, 4):
+                if dx or dy:
+                    c.create_text(cx + dx, cy + dy, text="ALGORITHM SELECT",
+                                  font=font, fill="#1a1208")
+        c.create_text(cx, cy, text="ALGORITHM SELECT", font=font, fill=CREAM)
+
+    def make_card(self, parent, key, abbr, sub):
+        frame = tk.Frame(parent, bg=PLATE, highlightthickness=4,
+                         highlightbackground=EDGE, cursor="hand2")
+        tab = tk.Label(frame, text=" ", width=12, font=("Impact", 12),
+                       fg=ORANGE, bg="black")
+        tab.pack(padx=14, pady=(8, 4))
+
+        portrait = tk.Frame(frame, bg=DARK, width=170, height=96)
+        portrait.pack(padx=8)
+        portrait.pack_propagate(False)
+        tk.Label(portrait, text=abbr, font=("Impact", 32, "italic"),
+                 fg=ORANGE, bg=DARK).pack(pady=(6, 0))
+        tk.Label(portrait, text=sub, font=(FONT, 10, "bold"),
+                 fg=CREAM, bg=DARK).pack()
+
+        name = tk.Label(frame, text=key, font=(FONT, 11, "bold"), fg=METAL,
+                        bg=TAN, relief="ridge", bd=3, width=16)
+        name.pack(padx=8, pady=(6, 8))
+
+        for w in (frame, tab, portrait, name, *portrait.winfo_children()):
+            w.bind("<Button-1>", lambda e, k=key: self.select(k))
+        return {"frame": frame, "tab": tab}
+
+    def make_field(self, parent, label, width):
+        plate = tk.Frame(parent, bg=PLATE, highlightthickness=3, highlightbackground=EDGE)
+        plate.pack(side="left", padx=10)
+        tk.Label(plate, text=label, font=("Impact", 12), fg=CREAM,
+                 bg=PLATE).pack(padx=10, pady=(6, 2))
+        entry = tk.Entry(plate, width=width, font=(FONT, 14, "bold"), justify="center",
+                         bg=DARK, fg=CREAM, insertbackground=CREAM, relief="flat",
+                         highlightthickness=2, highlightbackground=EDGE,
+                         highlightcolor=ORANGE)
+        entry.pack(padx=10, pady=(0, 10))
+        return entry
+
+    
+    def select(self, key):
+        self.algo_var.set(key)
+        for k, card in self.cards.items():
+            on = (k == key)
+            card["frame"].config(highlightbackground=ORANGE if on else EDGE)
+            card["tab"].config(text="SELECTED" if on else " ")
+        self.info_label.config(text=ALGO_INFO[key])
+
+    def run(self):
+        
+        try:
+            num_frames = int(self.frames_entry.get().strip())
+            if num_frames < 1:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Invalid input", "Number of frames must be a whole number, at least 1.")
+            return
+
+       
+        try:
+            refs = [int(x) for x in self.refs_entry.get().replace(",", " ").split()]
+            if not refs:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Invalid input",
+                                 "Enter page numbers separated by spaces (e.g. 1 2 3 4 1 5).")
+            return
+
+        choice = self.algo_var.get()
+        algos = list(ALGO_NAMES) if choice == "COMPARE ALL" else [choice]
+        self.app.screens["results"].display(algos, refs, num_frames)
+        self.app.show_screen("results")
+
+
+
+class ResultsScreen(tk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=BG)
+        self.app = app
+
+        tk.Label(self, text="RESULTS", font=(FONT, 28, "bold"),
+                 fg=YELLOW, bg=BG).pack(pady=(15, 8))
+
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True, padx=15, pady=5)
+
+        btns = tk.Frame(self, bg=BG)
+        btns.pack(pady=10)
+        retro_button(btns, "BACK", lambda: app.show_screen("input"),
+                     color=WHITE, width=10).grid(row=0, column=0, padx=10)
+        retro_button(btns, "HOME", lambda: app.show_screen("title"),
+                     width=10).grid(row=0, column=1, padx=10)
+
+    def display(self, algos, refs, num_frames):
+        for tab in self.notebook.tabs():
+            self.notebook.forget(tab)
+
+        total = len(refs)
+        results = {}
+
+        for algo in algos:
+            trace, hits, faults = simulate(algo, refs, num_frames)
+            results[algo] = (hits, faults)
+            self._add_algo_tab(algo, trace, hits, faults, total, num_frames)
+
+        if len(algos) > 1:
+            self._add_summary_tab(results, total)
+
+    def _add_algo_tab(self, algo, trace, hits, faults, total, num_frames):
+        tab = tk.Frame(self.notebook, bg=BG)
+        self.notebook.add(tab, text=algo)
+
+        tk.Label(tab, text=ALGO_NAMES[algo], font=(FONT, 14, "bold"),
+                 fg=ORANGE, bg=BG).pack(pady=(8, 4))
+
+        
+        columns = (["Step", "Page"] + [f"Frame {i + 1}" for i in range(num_frames)]
+                   + ["Result", "Replaced"])
+        table_frame = tk.Frame(tab, bg=BG)
+        table_frame.pack(fill="both", expand=True, padx=8)
+
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        for c in columns:
+            tree.heading(c, text=c)
+            tree.column(c, width=80, anchor="center")
+        tree.tag_configure("HIT", foreground="#1e8449")
+        tree.tag_configure("FAULT", foreground="#c0392b")
+
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        for step, (page, frames, status, replaced) in enumerate(trace, start=1):
+            row = [step, page] + [show(f) for f in frames] + [status, show(replaced)]
+            tree.insert("", "end", values=row, tags=(status,))
+
+        
+        final = " ".join(show(f) for f in trace[-1][1])
+        stats = (f"Final Frames: {final}\n"
+                 f"Total Hits: {hits}     Total Faults: {faults}\n"
+                 f"Hit Ratio: {hits / total * 100:.2f}% ({hits}/{total})     "
+                 f"Fault Ratio: {faults / total * 100:.2f}% ({faults}/{total})")
+        tk.Label(tab, text=stats, font=(FONT, 11, "bold"), fg=WHITE,
+                 bg=BG, justify="center").pack(pady=8)
+
+    def _add_summary_tab(self, results, total):
+        tab = tk.Frame(self.notebook, bg=BG)
+        self.notebook.add(tab, text="SUMMARY")
+
+        tk.Label(tab, text="SUMMARY", font=(FONT, 14, "bold"),
+                 fg=ORANGE, bg=BG).pack(pady=(8, 10))
+
+        columns = ["Algorithm", "Hits", "Faults", "Hit %", "Fault %"]
+        tree = ttk.Treeview(tab, columns=columns, show="headings", height=len(results))
+        for c in columns:
+            tree.heading(c, text=c)
+            tree.column(c, width=120, anchor="center")
+        for algo, (h, f) in results.items():
+            tree.insert("", "end", values=(algo, h, f,
+                                           f"{h / total * 100:.2f}%",
+                                           f"{f / total * 100:.2f}%"))
+        tree.pack(padx=20, pady=10)
+
+
+if __name__ == "__main__":
+    App().mainloop()
