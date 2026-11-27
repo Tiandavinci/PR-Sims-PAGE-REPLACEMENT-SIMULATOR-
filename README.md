@@ -8,10 +8,10 @@ A GUI-based (Tkinter) application that simulates the **FIFO**, **LRU**, and **Op
 |------|------|
 | Guerra, Kenneth Lawrence | Back-end |
 | Oquin, Edmel Cristian | Front-end |
-| Matira, Adhyson | |
-| Antiniola, Matthew | |
-| Corona, Christian Joseph | |
-| Martinez, Juan Carlo Gabriel | |
+| Matira, Adhyson | UI Design|
+| Antiniola, Matthew | Front-end |
+| Corona, Christian Joseph | UI Design|
+| Martinez, Juan Carlo Gabriel | UI Design|
 
 **Course / Section:** BSIT - 2104  **Instructor:** Gerarld James Dano
 
